@@ -80,7 +80,9 @@ paymentsRouter.post("/initialize", requireAuth, async (req, res) => {
 
     res.json({
       authorizationUrl: paystack.data.authorization_url,
+      accessCode: paystack.data.access_code,
       reference: paystack.data.reference,
+      amount: Number(order.total),
     });
   } catch (error) {
     res.status(500).json({

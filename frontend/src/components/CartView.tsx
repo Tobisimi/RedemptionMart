@@ -1,8 +1,10 @@
 import { FormEvent, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { initializeOrderPayment } from "../lib/api";
+import { openPaystackCheckout } from "../lib/paystackCheckout";
+import { notifySellerOrderPlaced } from "../lib/api";
 import { formatNaira } from "../lib/format";
 import { useCart } from "../contexts/CartContext";
+import PaymentReceipt from "./PaymentReceipt";
 
 type Props = {
   onOrderPlaced: () => void;
@@ -15,6 +17,11 @@ export default function CartView({ onOrderPlaced }: Props) {
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [receipt, setReceipt] = useState<{
+    reference: string;
+    orderId: string;
+    amount: number;
+  } | null>(null);
 
   async function handlePlaceOrder(event: FormEvent) {
     event.preventDefault();
@@ -40,57 +47,72 @@ export default function CartView({ onOrderPlaced }: Props) {
       p_items: payload,
     });
 
-    if (placeError) {
+    if (placeError || !orderId) {
       setSubmitting(false);
-      const hint = placeError.message.includes("place_order")
-        ? " Run supabase/run_orders_setup.sql in Supabase SQL Editor."
-        : "";
-      setError(placeError.message + hint);
-      return;
-    }
-
-    if (!orderId) {
-      setSubmitting(false);
-      setError("Order was not created.");
+      setError(placeError?.message ?? "Order was not created.");
       return;
     }
 
     try {
+      await notifySellerOrderPlaced(orderId);
+    } catch {
+      /* push notify is best-effort */
+    }
+
+    const orderTotal = subtotal;
+
+    try {
       clearCart();
-      const payment = await initializeOrderPayment(orderId);
-      window.location.href = payment.authorizationUrl;
+      const result = await openPaystackCheckout(orderId);
+      setReceipt({ reference: result.reference, orderId: result.orderId, amount: orderTotal });
     } catch (paymentError) {
-      setSubmitting(false);
       setError(
         paymentError instanceof Error
-          ? `${paymentError.message} Your order was created but payment did not start — check Orders to retry.`
-          : "Payment could not start."
+          ? paymentError.message
+          : "Payment could not be completed."
       );
       onOrderPlaced();
+    } finally {
+      setSubmitting(false);
     }
+  }
+
+  if (receipt) {
+    return (
+      <PaymentReceipt
+        reference={receipt.reference}
+        amount={receipt.amount}
+        orderId={receipt.orderId}
+        onDone={onOrderPlaced}
+      />
+    );
   }
 
   if (items.length === 0) {
     return (
-      <section className="card">
-        <h2>Your cart</h2>
-        <p className="muted">Your cart is empty. Browse products and add something.</p>
+      <section className="empty-state card">
+        <div className="empty-icon">🛒</div>
+        <h2>Your cart is empty</h2>
+        <p className="muted">Discover products from sellers in Redemption City.</p>
       </section>
     );
   }
 
   return (
     <section className="stack">
-      <section className="card">
-        <h2>Your cart ({itemCount})</h2>
-        <p className="muted">From {seller?.shop_name}</p>
+      <section className="card checkout-summary">
+        <p className="eyebrow">Checkout</p>
+        <h2>{seller?.shop_name}</h2>
+        <p className="muted small">{itemCount} item{itemCount !== 1 ? "s" : ""}</p>
 
-        <ul className="cart-items">
+        <ul className="checkout-lines">
           {items.map((item) => (
-            <li key={item.product.id} className="cart-row">
-              <div>
+            <li key={item.product.id} className="checkout-line">
+              <div className="checkout-line-info">
                 <strong>{item.product.name}</strong>
-                <p className="muted">{formatNaira(Number(item.product.price))} each</p>
+                <span className="muted small">
+                  {item.quantity} × {formatNaira(Number(item.product.price))}
+                </span>
               </div>
               <div className="cart-controls">
                 <input
@@ -105,7 +127,7 @@ export default function CartView({ onOrderPlaced }: Props) {
                 />
                 <button
                   type="button"
-                  className="btn secondary small"
+                  className="btn ghost small"
                   onClick={() => removeItem(item.product.id)}
                 >
                   Remove
@@ -115,18 +137,18 @@ export default function CartView({ onOrderPlaced }: Props) {
           ))}
         </ul>
 
-        <p className="price large">Total: {formatNaira(subtotal)}</p>
-        <button type="button" className="btn link" onClick={clearCart}>
-          Clear cart
-        </button>
+        <div className="checkout-total">
+          <span>Total</span>
+          <strong>{formatNaira(subtotal)}</strong>
+        </div>
       </section>
 
       <section className="card">
-        <h3>Checkout & pay</h3>
         <form className="form" onSubmit={handlePlaceOrder}>
-          <fieldset className="fulfillment-options">
-            <legend>How do you want it?</legend>
-            <label className="radio-label">
+          <h3 className="form-title">Delivery options</h3>
+
+          <div className="option-cards">
+            <label className={`option-card ${fulfillment === "pickup" ? "selected" : ""}`}>
               <input
                 type="radio"
                 name="fulfillment"
@@ -134,9 +156,13 @@ export default function CartView({ onOrderPlaced }: Props) {
                 checked={fulfillment === "pickup"}
                 onChange={() => setFulfillment("pickup")}
               />
-              Pickup from seller ({seller?.address})
+              <div>
+                <strong>Pickup</strong>
+                <p className="muted small">Collect from {seller?.address}</p>
+              </div>
             </label>
-            <label className="radio-label">
+
+            <label className={`option-card ${fulfillment === "delivery" ? "selected" : ""}`}>
               <input
                 type="radio"
                 name="fulfillment"
@@ -144,9 +170,12 @@ export default function CartView({ onOrderPlaced }: Props) {
                 checked={fulfillment === "delivery"}
                 onChange={() => setFulfillment("delivery")}
               />
-              Delivery to my address
+              <div>
+                <strong>Delivery</strong>
+                <p className="muted small">We deliver to your address</p>
+              </div>
             </label>
-          </fieldset>
+          </div>
 
           {fulfillment === "delivery" && (
             <label>
@@ -161,14 +190,21 @@ export default function CartView({ onOrderPlaced }: Props) {
             </label>
           )}
 
+          <div className="escrow-notice">
+            <strong>Buyer protection</strong>
+            <p className="muted small">
+              Payment is processed by Paystack and held until you inspect your order and tap
+              &ldquo;Confirm received.&rdquo; The seller is paid only after that.
+            </p>
+          </div>
+
           {error && <p className="feedback error">{error}</p>}
 
-          <button type="submit" className="btn primary" disabled={submitting}>
-            {submitting ? "Processing…" : `Pay ${formatNaira(subtotal)} with Paystack`}
+          <button type="submit" className="btn primary full pay-btn" disabled={submitting}>
+            {submitting ? "Opening Paystack…" : `Pay ${formatNaira(subtotal)} securely`}
           </button>
-          <p className="muted small">
-            Spec: full payment is collected now and held until you confirm receipt.
-          </p>
+
+          <p className="paystack-badge">Secured by Paystack</p>
         </form>
       </section>
     </section>

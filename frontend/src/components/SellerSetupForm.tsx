@@ -12,6 +12,8 @@ export default function SellerSetupForm({ onComplete }: Props) {
   const [shopName, setShopName] = useState("");
   const [description, setDescription] = useState("");
   const [address, setAddress] = useState("");
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -34,6 +36,8 @@ export default function SellerSetupForm({ onComplete }: Props) {
       shop_name: shopName.trim(),
       description: description.trim() || null,
       address: address.trim(),
+      latitude,
+      longitude,
     });
 
     setSubmitting(false);
@@ -83,6 +87,32 @@ export default function SellerSetupForm({ onComplete }: Props) {
             required
           />
         </label>
+
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={() => {
+            if (!navigator.geolocation) {
+              setError("Location is not available on this device.");
+              return;
+            }
+            navigator.geolocation.getCurrentPosition(
+              (position) => {
+                setLatitude(position.coords.latitude);
+                setLongitude(position.coords.longitude);
+                setError(null);
+              },
+              () => setError("Could not get your location. You can still save your address.")
+            );
+          }}
+        >
+          Use my current location on map
+        </button>
+        {latitude != null && longitude != null && (
+          <p className="muted small">
+            Location saved ({latitude.toFixed(4)}, {longitude.toFixed(4)})
+          </p>
+        )}
 
         {error && <p className="feedback error">{error}</p>}
 

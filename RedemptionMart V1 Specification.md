@@ -1,6 +1,6 @@
 # RedemptionMart — V1 Product & Technical Specification
 
-**Status:** Pre-development planning
+**Status:** V1 Beta — partial implementation (live demo: https://redemptionmart.vercel.app)  
 **Scope:** Redemption City only (not Lagos, not nationwide)
 
 ---
@@ -30,18 +30,19 @@ without rebuilding anything.
 
 ---
 
-## 3. Proposed Tech Stack
+## 3. Tech Stack (as built)
 
-*(Following the same general pattern as your MedEvac build — adjust as needed.)*
-
-- **Frontend:** React + Vite, configured as an installable PWA (service worker, manifest)
-- **Backend:** Node.js + Express
-- **Database:** PostgreSQL (e.g. via Supabase) — relational data (orders,
-  transactions, payouts) benefits from SQL over a document store
-- **File storage:** Supabase Storage or Cloudinary (product images)
-- **Payments:** Paystack (Checkout + Transfers API)
-- **Notifications:** Web Push (sellers need reliable "new order" alerts)
-- **Hosting:** Backend on Railway/Render, frontend on Vercel/Netlify
+- **Frontend:** React 19 + Vite 6, TypeScript, installable PWA (`vite-plugin-pwa`)
+- **Styling:** Custom CSS (mobile-first)
+- **State:** React Context (auth, cart)
+- **Production API:** Vercel serverless functions in `frontend/api/` (payments)
+- **Local dev API:** Node.js + Express (`backend/`, proxied via Vite)
+- **Database:** PostgreSQL via Supabase — SQL migrations (not an ORM)
+- **Auth:** Supabase Auth + `profiles` table with RLS
+- **Payments:** Paystack inline checkout + server-side verify (Transfers API planned)
+- **File storage:** Product image URL field today; Supabase Storage planned
+- **Notifications:** Web Push planned (not yet implemented)
+- **Hosting:** Vercel (frontend + payment API) + Supabase (database/auth)
 
 ---
 
@@ -190,3 +191,40 @@ platform.
 - Whether sellers need ID/bank verification (BVN/NIN) before receiving payouts — likely required by Paystack regardless
 - Final Paystack account type/setup for the hold-and-release payment model
 - Terms of Service and Prohibited Items list (can largely be written before development starts)
+
+---
+
+## 17. Implementation Status (June 2026)
+
+Aligned with `RedemptionMart_Architecture.md`. Summary for judges and stakeholders.
+
+### Live in the demo
+
+| Area | What works |
+|---|---|
+| Accounts | Email/password signup and login via Supabase Auth |
+| Sellers | Create shop, add products (name, price, description, image URL), mark sold out |
+| Buyers | Browse and search products, view details, add to cart |
+| Orders | Place order (delivery or pickup), cancel while pending/unpaid |
+| Payments | Paystack inline popup, server verify, payment receipt |
+| Seller fulfillment | Confirm paid orders → mark shipped or ready for pickup |
+| Buyer completion | Confirm received → order `completed`, 3% commission recorded on transaction |
+| Security | RLS on database tables; Paystack secret server-side only |
+
+### Built but not fully automated yet
+
+- **Seller payout:** `transactions.payout_status` is set to `pending` on confirm;
+  Paystack Transfers to seller bank is the next step (spec Section 9 step 5).
+- **Escrow:** Payment is collected to platform Paystack balance before buyer confirms;
+  hold-and-release *intent* matches spec; transfer automation pending.
+
+### V1 spec items not yet built
+
+- Reviews after completed orders (Section 11)
+- Disputes / “Report a Problem” UI (Section 12)
+- Push notifications for sellers (Section 7)
+- Admin dispute panel (Section 4, role 3)
+- Maps for seller location display (Section 6 step 3)
+- Supabase Storage for photo uploads (Section 7 step 2)
+- Paystack webhooks as backup to verify endpoint
+- Auto-cancel after 120 hours without buyer confirmation (Section 9 step 6)

@@ -3,8 +3,13 @@ import { supabase, type Product, type SellerProfile } from "../lib/supabase";
 import { formatNaira } from "../lib/format";
 import { useCart } from "../contexts/CartContext";
 
+import { sellerMapEmbedUrl, sellerMapUrl } from "../lib/maps";
+
 type ProductDetail = Product & {
-  seller_profiles: Pick<SellerProfile, "id" | "shop_name" | "address" | "description"> | null;
+  seller_profiles: Pick<
+    SellerProfile,
+    "id" | "shop_name" | "address" | "description" | "latitude" | "longitude"
+  > | null;
 };
 
 type Props = {
@@ -26,7 +31,7 @@ export default function ProductDetail({ productId, onBack, onAddedToCart }: Prop
 
     const { data, error: fetchError } = await supabase
       .from("products")
-      .select("*, seller_profiles(id, shop_name, address, description)")
+      .select("*, seller_profiles(id, shop_name, address, description, latitude, longitude)")
       .eq("id", productId)
       .eq("status", "active")
       .maybeSingle();
@@ -95,6 +100,29 @@ export default function ProductDetail({ productId, onBack, onAddedToCart }: Prop
             <h3>Sold by {shop.shop_name}</h3>
             {shop.description && <p className="muted">{shop.description}</p>}
             <p className="muted">📍 {shop.address}</p>
+            <a
+              href={sellerMapUrl({
+                address: shop.address,
+                latitude: shop.latitude,
+                longitude: shop.longitude,
+              })}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn link small"
+            >
+              Open seller location on map
+            </a>
+            {shop.latitude != null && shop.longitude != null && (
+              <iframe
+                title={`Map for ${shop.shop_name}`}
+                className="seller-map"
+                src={sellerMapEmbedUrl({
+                  latitude: shop.latitude,
+                  longitude: shop.longitude,
+                })}
+                loading="lazy"
+              />
+            )}
           </section>
         )}
 

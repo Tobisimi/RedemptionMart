@@ -1,12 +1,26 @@
 # RedemptionMart
 
-Local marketplace for Redemption City — React PWA frontend, Express backend, Supabase PostgreSQL.
+Hyperlocal marketplace PWA for Redemption City — browse, order, and pay safely
+via Paystack. Live demo: **https://redemptionmart.vercel.app**
+
+## What's built (V1 beta)
+
+- Buyer/seller accounts (Supabase Auth)
+- Seller shops and product listings
+- Browse and search products, cart, checkout
+- Orders with delivery or pickup
+- Paystack inline payment + server-side verify
+- Seller fulfillment (shipped / ready for pickup)
+- Buyer confirm received (3% commission recorded)
+
+See `RedemptionMart_Architecture.md` and `RedemptionMart V1 Specification.md`
+for full implementation status vs roadmap.
 
 ## Prerequisites
 
 - Node.js 20+
-- [Supabase CLI](https://supabase.com/docs/guides/cli) (`npm install -g supabase`)
-- Docker Desktop (required for local Supabase: `supabase start`)
+- [Supabase CLI](https://supabase.com/docs/guides/cli) (optional, for local DB)
+- Docker Desktop (only if running Supabase locally)
 
 ## Setup
 
@@ -18,126 +32,86 @@ Local marketplace for Redemption City — React PWA frontend, Express backend, S
 
 2. **Configure environment**
 
-   Copy `.env.example` to `.env` at the project root and fill in values from your Supabase project dashboard (Settings → API):
+   Copy `.env.example` to `.env` at the project root:
 
    ```bash
    cp .env.example .env
    ```
 
-   For the frontend, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to the same URL and anon key.
+   Fill in Supabase URL, anon key, and service role key from your project dashboard.
+   Add `PAYSTACK_SECRET_KEY` for payments (test keys OK for demo).
 
-3. **Start Supabase locally** (requires Docker)
+3. **Apply database migrations**
 
-   ```bash
-   supabase start
-   ```
+   Hosted Supabase: run each file in `supabase/migrations/` in order via the
+   SQL Editor, or use `npm run db:migrate` if the CLI can reach your project.
 
-   After the first start, run migrations:
-
-   ```bash
-   npm run db:migrate
-   ```
-
-   Or reset the local database (applies all migrations from scratch):
-
-   ```bash
-   npm run db:reset
-   ```
-
-4. **Regenerate TypeScript types** (after migrations)
-
-   ```bash
-   npm run db:types
-   ```
-
-5. **Run development servers**
+4. **Run locally**
 
    ```bash
    npm run dev
    ```
 
-   - Backend: http://localhost:3001/health
    - Frontend: http://localhost:5173
+   - Backend (payments proxy): http://localhost:3001/health
 
-## Remote Supabase project
+## Production (Vercel)
 
-If using a hosted Supabase project instead of local:
+Deploy the `frontend/` folder as the Vercel project root (or set root directory
+to `frontend` in Vercel settings).
 
-1. `supabase link --project-ref YOUR_PROJECT_REF`
-2. `npm run db:migrate` (pushes migrations to remote)
-3. Update `.env` with your project's URL and keys
-4. `supabase gen types typescript --linked > shared/types/database.types.ts`
+**Environment variables on Vercel:**
+
+| Variable | Notes |
+|---|---|
+| `VITE_SUPABASE_URL` | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Public anon key |
+| `VITE_API_URL` | Leave **empty** (same-origin `/api`) |
+| `SUPABASE_URL` | Same as above (server routes) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server only — never expose to client |
+| `PAYSTACK_SECRET_KEY` | Server only |
+
+Payment API lives in `frontend/api/payments/` as Vercel serverless functions.
 
 ## Project structure
 
 ```
-backend/          Express API (service-role Supabase client)
-frontend/         React + Vite PWA
-shared/types/     Generated Supabase database types
-supabase/         SQL migrations and Supabase config
+backend/          Express API for local dev (payments)
+frontend/         React PWA + Vercel serverless API
+frontend/api/     Production payment routes
+shared/types/     Supabase database types
+supabase/         SQL migrations
 ```
 
-## Data models (V1)
+## Data models
 
-| Spec name       | Database table       | Notes                                      |
-|-----------------|----------------------|--------------------------------------------|
-| User            | `public.profiles`    | Linked to `auth.users`; role flags         |
-| SellerProfile   | `public.seller_profiles` | Shop info, location, bank details    |
-
-## Smoke tests
-
-After migrations are applied, verify the User and SellerProfile models:
-
-### 1. Signup creates a profile row
-
-1. Open Supabase Studio (local: http://127.0.0.1:54323, or your hosted dashboard).
-2. Go to **Authentication → Users** and create a test user (email + password).
-3. Go to **Table Editor → profiles** and confirm a row exists with `id` matching the new user's UUID.
-4. Check defaults: `is_buyer = true`, `is_seller = false`, `is_admin = false`.
-
-### 2. Seller profile FK and is_seller flag
-
-1. In **Table Editor → seller_profiles**, insert a row:
-   - `user_id`: the test user's profile `id`
-   - `shop_name`: e.g. "Test Shop"
-   - `address`: e.g. "Redemption City"
-   - `latitude` / `longitude`: optional coordinates
-2. Confirm the row is created and `user_id` references `profiles.id`.
-3. Confirm `profiles.is_seller` was automatically set to `true` for that user (DB trigger).
-
-### 3. Row Level Security
-
-**Profiles (own row):**
-
-1. Sign in as the test user via the Supabase client or Auth UI.
-2. Query `profiles` filtered by your user id — should succeed.
-3. Attempt to update another user's profile — should fail.
-
-**Seller profiles (read for buyers, CRUD for owner):**
-
-1. As the seller user, insert/update/delete your own `seller_profiles` row — should succeed.
-2. As a different authenticated user, `SELECT` on `seller_profiles` — should succeed (buyers need shop info).
-3. As a different user, attempt to update someone else's seller profile — should fail.
-
-### 4. Backend health check
-
-```bash
-curl http://localhost:3001/health
-```
-
-Expected: `{"status":"ok"}`
+| Spec name     | Database table        |
+|---------------|-----------------------|
+| User          | `public.profiles`     |
+| SellerProfile | `public.seller_profiles` |
+| Product       | `public.products`     |
+| Order         | `public.orders` + `order_items` |
+| Transaction   | `public.transactions` |
 
 ## Scripts
 
-| Command            | Description                          |
-|--------------------|--------------------------------------|
-| `npm run dev`      | Start backend + frontend             |
-| `npm run dev:backend` | Express API only                  |
-| `npm run dev:frontend`| Vite dev server only              |
-| `npm run db:migrate`  | Push migrations to Supabase       |
-| `npm run db:reset`    | Reset local DB and re-run migrations |
-| `npm run db:types`    | Regenerate `shared/types/database.types.ts` |
+| Command | Description |
+|---|---|
+| `npm run dev` | Frontend + local Express API |
+| `npm run dev:frontend` | Vite only |
+| `npm run dev:backend` | Express only |
+| `npm run db:migrate` | Push migrations to linked Supabase |
+| `npm run db:types` | Regenerate `shared/types/database.types.ts` |
 
 ## Admin users
 
-Set `is_admin = true` on a profile row manually in Supabase Studio (no admin UI in V1 yet).
+Set `is_admin = true` on a `profiles` row in Supabase Studio. Admin UI is on
+the V1 roadmap; disputes are handled manually until then.
+
+## Submission documents
+
+| Document | Location |
+|---|---|
+| Architecture | `RedemptionMart_Architecture.md` |
+| Go-to-market | `frontend/RedemptionMart_GTM.md` |
+| Product spec | `RedemptionMart V1 Specification.md` |

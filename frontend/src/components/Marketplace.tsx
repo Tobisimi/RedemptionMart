@@ -5,6 +5,8 @@ import { useAuth } from "../contexts/AuthContext";
 import AddProductForm from "./AddProductForm";
 import SellerSetupForm from "./SellerSetupForm";
 import SellerOrdersPanel from "./SellerOrdersPanel";
+import BankDetailsForm from "./BankDetailsForm";
+import { registerSellerPushNotifications } from "../lib/pushNotifications";
 
 type ProductRow = Product & {
   seller_profiles: Pick<SellerProfile, "shop_name"> | null;
@@ -16,6 +18,7 @@ type BrowseProps = {
 
 export default function BrowseProducts({ onSelectProduct }: BrowseProps) {
   const [products, setProducts] = useState<ProductRow[]>([]);
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,6 +49,16 @@ export default function BrowseProducts({ onSelectProduct }: BrowseProps) {
   if (loading) return <p className="muted">Loading products…</p>;
   if (error) return <p className="feedback error">{error}</p>;
 
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredProducts = normalizedQuery
+    ? products.filter(
+        (product) =>
+          product.name.toLowerCase().includes(normalizedQuery) ||
+          product.description?.toLowerCase().includes(normalizedQuery) ||
+          product.seller_profiles?.shop_name?.toLowerCase().includes(normalizedQuery)
+      )
+    : products;
+
   if (products.length === 0) {
     return (
       <section className="card">
@@ -57,9 +70,26 @@ export default function BrowseProducts({ onSelectProduct }: BrowseProps) {
 
   return (
     <section>
-      <h2 className="section-title">Browse products</h2>
+      <div className="page-head">
+        <div>
+          <p className="eyebrow">Marketplace</p>
+          <h2 className="section-title">Shop Redemption City</h2>
+        </div>
+      </div>
+      <label className="search-field">
+        <span className="sr-only">Search products</span>
+        <input
+          type="search"
+          placeholder="Search products or shops…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </label>
+      {filteredProducts.length === 0 ? (
+        <p className="muted">No products match your search.</p>
+      ) : (
       <ul className="product-grid">
-        {products.map((product) => (
+        {filteredProducts.map((product) => (
           <li key={product.id}>
             <button
               type="button"
@@ -79,6 +109,7 @@ export default function BrowseProducts({ onSelectProduct }: BrowseProps) {
           </li>
         ))}
       </ul>
+      )}
     </section>
   );
 }
@@ -131,6 +162,14 @@ export function SellerDashboard() {
     loadSellerData();
   }, [loadSellerData]);
 
+  useEffect(() => {
+    if (sellerProfile) {
+      registerSellerPushNotifications().catch(() => {
+        /* optional — sellers can still use the app without push */
+      });
+    }
+  }, [sellerProfile?.id]);
+
   async function handleShopCreated() {
     await refreshProfile();
     await loadSellerData();
@@ -176,6 +215,17 @@ export function SellerDashboard() {
       </section>
 
       <AddProductForm sellerId={sellerProfile.id} onAdded={loadSellerData} />
+
+      <BankDetailsForm
+        sellerId={sellerProfile.id}
+        shopName={sellerProfile.shop_name}
+        initial={{
+          bank_account_name: sellerProfile.bank_account_name,
+          bank_account_number: sellerProfile.bank_account_number,
+          bank_code: sellerProfile.bank_code,
+        }}
+        onSaved={loadSellerData}
+      />
 
       <section className="card">
         <h3>Your products ({myProducts.length})</h3>

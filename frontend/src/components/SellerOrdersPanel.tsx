@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase, type Order, type OrderItem } from "../lib/supabase";
+import { cancelPaidPendingOrder } from "../lib/api";
 import { formatNaira } from "../lib/format";
 
 export type SellerOrderRow = Order & {
@@ -91,6 +92,16 @@ export default function SellerOrdersPanel({
     await loadOrders();
   }
 
+  async function cancelPaidPending(orderId: string) {
+    setActionError(null);
+    try {
+      await cancelPaidPendingOrder(orderId);
+      await loadOrders();
+    } catch (cancelError) {
+      setActionError(cancelError instanceof Error ? cancelError.message : "Cancel failed");
+    }
+  }
+
   const pendingCount = orders.filter(
     (o) => o.status === "pending" && o.payment_status === "paid"
   ).length;
@@ -149,13 +160,22 @@ export default function SellerOrdersPanel({
               <p className="price">Total: {formatNaira(Number(order.total))}</p>
 
               {order.status === "pending" && order.payment_status === "paid" && (
-                <button
-                  type="button"
-                  className="btn primary"
-                  onClick={() => updateStatus(order.id, "confirmed")}
-                >
-                  ✓ Confirm this order
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={() => updateStatus(order.id, "confirmed")}
+                  >
+                    ✓ Confirm this order
+                  </button>
+                  <button
+                    type="button"
+                    className="btn secondary small"
+                    onClick={() => cancelPaidPending(order.id)}
+                  >
+                    Cancel &amp; refund buyer
+                  </button>
+                </>
               )}
 
               {order.status === "pending" && order.payment_status === "unpaid" && (

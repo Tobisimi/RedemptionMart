@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase, type Order, type OrderItem } from "../lib/supabase";
+import { cancelPaidPendingOrder, triggerSellerPayout } from "../lib/api";
 import { formatNaira } from "../lib/format";
-import { initializeOrderPayment } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import SellerOrdersPanel from "./SellerOrdersPanel";
+import ReviewForm from "./ReviewForm";
+import ReportProblemForm from "./ReportProblemForm";
 
 type OrderRow = Order & {
   order_items: OrderItem[];
@@ -31,11 +33,14 @@ function statusClass(status: Order["status"]): string {
 export default function OrdersView() {
   const { user, profile } = useAuth();
   const [buyerOrders, setBuyerOrders] = useState<OrderRow[]>([]);
+  const [reviewedOrderIds, setReviewedOrderIds] = useState<Set<string>>(new Set());
   const [hasShop, setHasShop] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [payingOrderId, setPayingOrderId] = useState<string | null>(null);
+  const [confirmingOrderId, setConfirmingOrderId] = useState<string | null>(null);
+  const [reportingOrderId, setReportingOrderId] = useState<string | null>(null);
 
   const loadBuyerOrders = useCallback(async () => {
     if (!user) return;
@@ -57,14 +62,27 @@ export default function OrdersView() {
       .eq("buyer_id", user.id)
       .order("created_at", { ascending: false });
 
-    setLoading(false);
-
     if (fetchError) {
+      setLoading(false);
       setError(fetchError.message);
       return;
     }
 
-    setBuyerOrders((data as OrderRow[]) ?? []);
+    const orders = (data as OrderRow[]) ?? [];
+    setBuyerOrders(orders);
+
+    if (orders.length > 0) {
+      const completedIds = orders.filter((o) => o.status === "completed").map((o) => o.id);
+      if (completedIds.length > 0) {
+        const { data: reviews } = await supabase
+          .from("reviews")
+          .select("order_id")
+          .in("order_id", completedIds);
+        setReviewedOrderIds(new Set((reviews ?? []).map((r) => r.order_id)));
+      }
+    }
+
+    setLoading(false);
   }, [user]);
 
   useEffect(() => {
@@ -86,30 +104,71 @@ export default function OrdersView() {
     await loadBuyerOrders();
   }
 
+  async function cancelPaidPending(orderId: string) {
+    setActionError(null);
+    try {
+      await cancelPaidPendingOrder(orderId);
+      await loadBuyerOrders();
+    } catch (cancelError) {
+      setActionError(cancelError instanceof Error ? cancelError.message : "Cancel failed");
+    }
+  }
+
   async function payForOrder(orderId: string) {
     setActionError(null);
     setPayingOrderId(orderId);
     try {
-      const payment = await initializeOrderPayment(orderId);
-      window.location.href = payment.authorizationUrl;
+      const { openPaystackCheckout } = await import("../lib/paystackCheckout");
+      await openPaystackCheckout(orderId);
+      await loadBuyerOrders();
     } catch (payError) {
+      setActionError(payError instanceof Error ? payError.message : "Payment failed");
+    } finally {
       setPayingOrderId(null);
-      setActionError(payError instanceof Error ? payError.message : "Payment failed to start");
     }
   }
 
   async function confirmReceived(orderId: string) {
     setActionError(null);
+    setConfirmingOrderId(orderId);
+
     const { error: confirmError } = await supabase.rpc("confirm_order_received", {
       p_order_id: orderId,
     });
 
     if (confirmError) {
       setActionError(confirmError.message);
+      setConfirmingOrderId(null);
       return;
     }
 
-    await loadBuyerOrders();
+    try {
+      await triggerSellerPayout(orderId);
+    } catch (payoutError) {
+      setActionError(
+        payoutError instanceof Error
+          ? `${payoutError.message} — order marked delivered; payout can be retried.`
+          : "Payout could not complete automatically."
+      );
+    } finally {
+      setConfirmingOrderId(null);
+      await loadBuyerOrders();
+    }
+  }
+
+  async function retryPayout(orderId: string) {
+    setActionError(null);
+    setConfirmingOrderId(orderId);
+    try {
+      await triggerSellerPayout(orderId);
+    } catch (payoutError) {
+      setActionError(
+        payoutError instanceof Error ? payoutError.message : "Payout could not complete."
+      );
+    } finally {
+      setConfirmingOrderId(null);
+      await loadBuyerOrders();
+    }
   }
 
   if (loading) return <p className="muted">Loading orders…</p>;
@@ -161,17 +220,74 @@ export default function OrdersView() {
                     </button>
                   )}
 
+                  {order.status === "pending" && order.payment_status === "paid" && (
+                    <button
+                      type="button"
+                      className="btn secondary small"
+                      onClick={() => cancelPaidPending(order.id)}
+                    >
+                      Cancel &amp; refund
+                    </button>
+                  )}
+
                   {order.payment_status === "paid" &&
-                    (order.status === "shipped" || order.status === "ready_for_pickup") && (
-                      <button
-                        type="button"
-                        className="btn primary small"
-                        onClick={() => confirmReceived(order.id)}
-                      >
-                        Confirm received
-                      </button>
+                    (order.status === "shipped" || order.status === "ready_for_pickup") &&
+                    reportingOrderId !== order.id && (
+                      <>
+                        <button
+                          type="button"
+                          className="btn primary small"
+                          disabled={confirmingOrderId === order.id}
+                          onClick={() => confirmReceived(order.id)}
+                        >
+                          {confirmingOrderId === order.id ? "Processing…" : "Confirm received"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn secondary small"
+                          onClick={() => setReportingOrderId(order.id)}
+                        >
+                          Report a problem
+                        </button>
+                      </>
                     )}
+
+                  {order.status === "delivered" && (
+                    <button
+                      type="button"
+                      className="btn secondary small"
+                      disabled={confirmingOrderId === order.id}
+                      onClick={() => retryPayout(order.id)}
+                    >
+                      Retry seller payout
+                    </button>
+                  )}
                 </div>
+
+                {reportingOrderId === order.id && (
+                  <ReportProblemForm
+                    orderId={order.id}
+                    onCancel={() => setReportingOrderId(null)}
+                    onSubmitted={() => {
+                      setReportingOrderId(null);
+                      loadBuyerOrders();
+                    }}
+                  />
+                )}
+
+                {order.status === "completed" && !reviewedOrderIds.has(order.id) && (
+                  <ReviewForm orderId={order.id} onSubmitted={() => loadBuyerOrders()} />
+                )}
+
+                {order.status === "completed" && reviewedOrderIds.has(order.id) && (
+                  <p className="muted small">You reviewed this order. Thank you!</p>
+                )}
+
+                {order.status === "disputed" && (
+                  <p className="muted small">
+                    Dispute open — an admin will contact you after reviewing this order.
+                  </p>
+                )}
               </li>
             ))}
           </ul>

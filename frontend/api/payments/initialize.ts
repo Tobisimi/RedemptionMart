@@ -70,7 +70,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({
       authorizationUrl: paystack.data.authorization_url,
+      accessCode: paystack.data.access_code,
       reference: paystack.data.reference,
+      amount: Number(order.total),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Payment initialization failed";

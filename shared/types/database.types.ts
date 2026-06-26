@@ -61,6 +61,7 @@ export type Database = {
           bank_account_number: string | null;
           bank_code: string | null;
           bank_account_name: string | null;
+          paystack_recipient_code: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -75,6 +76,7 @@ export type Database = {
           bank_account_number?: string | null;
           bank_code?: string | null;
           bank_account_name?: string | null;
+          paystack_recipient_code?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -89,6 +91,7 @@ export type Database = {
           bank_account_number?: string | null;
           bank_code?: string | null;
           bank_account_name?: string | null;
+          paystack_recipient_code?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -110,6 +113,7 @@ export type Database = {
           description: string | null;
           price: number;
           image_url: string | null;
+          images: string[];
           status: Database["public"]["Enums"]["product_status"];
           created_at: string;
           updated_at: string;
@@ -121,6 +125,7 @@ export type Database = {
           description?: string | null;
           price: number;
           image_url?: string | null;
+          images?: string[];
           status?: Database["public"]["Enums"]["product_status"];
           created_at?: string;
           updated_at?: string;
@@ -132,6 +137,7 @@ export type Database = {
           description?: string | null;
           price?: number;
           image_url?: string | null;
+          images?: string[];
           status?: Database["public"]["Enums"]["product_status"];
           created_at?: string;
           updated_at?: string;
@@ -156,6 +162,8 @@ export type Database = {
           delivery_address: string | null;
           total: number;
           payment_status: Database["public"]["Enums"]["payment_status"];
+          fulfilled_at: string | null;
+          delivered_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -168,6 +176,8 @@ export type Database = {
           delivery_address?: string | null;
           total: number;
           payment_status?: Database["public"]["Enums"]["payment_status"];
+          fulfilled_at?: string | null;
+          delivered_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -180,6 +190,8 @@ export type Database = {
           delivery_address?: string | null;
           total?: number;
           payment_status?: Database["public"]["Enums"]["payment_status"];
+          fulfilled_at?: string | null;
+          delivered_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -253,6 +265,7 @@ export type Database = {
           paystack_reference: string;
           commission_amount: number | null;
           payout_status: Database["public"]["Enums"]["payout_status"];
+          payout_reference: string | null;
           paid_at: string | null;
           created_at: string;
           updated_at: string;
@@ -264,6 +277,7 @@ export type Database = {
           paystack_reference: string;
           commission_amount?: number | null;
           payout_status?: Database["public"]["Enums"]["payout_status"];
+          payout_reference?: string | null;
           paid_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -275,6 +289,7 @@ export type Database = {
           paystack_reference?: string;
           commission_amount?: number | null;
           payout_status?: Database["public"]["Enums"]["payout_status"];
+          payout_reference?: string | null;
           paid_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -288,6 +303,102 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      reviews: {
+        Row: {
+          id: string;
+          order_id: string;
+          buyer_id: string;
+          seller_id: string;
+          rating: number;
+          comment: string | null;
+          flagged: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          order_id: string;
+          buyer_id: string;
+          seller_id: string;
+          rating: number;
+          comment?: string | null;
+          flagged?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          order_id?: string;
+          buyer_id?: string;
+          seller_id?: string;
+          rating?: number;
+          comment?: string | null;
+          flagged?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      disputes: {
+        Row: {
+          id: string;
+          order_id: string;
+          buyer_id: string;
+          buyer_message: string;
+          admin_notes: string | null;
+          resolution: Database["public"]["Enums"]["dispute_resolution"] | null;
+          status: Database["public"]["Enums"]["dispute_status"];
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          order_id: string;
+          buyer_id: string;
+          buyer_message: string;
+          admin_notes?: string | null;
+          resolution?: Database["public"]["Enums"]["dispute_resolution"] | null;
+          status?: Database["public"]["Enums"]["dispute_status"];
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          order_id?: string;
+          buyer_id?: string;
+          buyer_message?: string;
+          admin_notes?: string | null;
+          resolution?: Database["public"]["Enums"]["dispute_resolution"] | null;
+          status?: Database["public"]["Enums"]["dispute_status"];
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      push_subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          endpoint?: string;
+          p256dh?: string;
+          auth?: string;
+          created_at?: string;
+        };
+        Relationships: [];
       };
     };
     Views: {
@@ -311,6 +422,22 @@ export type Database = {
         Args: { p_order_id: string };
         Returns: undefined;
       };
+      submit_review: {
+        Args: { p_order_id: string; p_rating: number; p_comment?: string | null };
+        Returns: string;
+      };
+      report_order_problem: {
+        Args: { p_order_id: string; p_message: string };
+        Returns: string;
+      };
+      complete_order_payout: {
+        Args: { p_order_id: string };
+        Returns: undefined;
+      };
+      auto_cancel_stale_orders: {
+        Args: Record<string, never>;
+        Returns: string[];
+      };
     };
     Enums: {
       product_status: "active" | "sold_out";
@@ -326,6 +453,8 @@ export type Database = {
       fulfillment_type: "delivery" | "pickup";
       payment_status: "unpaid" | "paid";
       payout_status: "pending" | "processing" | "paid" | "failed";
+      dispute_status: "open" | "resolved";
+      dispute_resolution: "refund_full" | "refund_partial" | "released_to_seller";
     };
     CompositeTypes: {
       [_ in never]: never;

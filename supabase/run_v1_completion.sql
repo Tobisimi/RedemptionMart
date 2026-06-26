@@ -1,0 +1,5 @@
+-- V1 spec completion migrations (run in Supabase SQL Editor, in order):
+--   1. supabase/migrations/000007_reviews_disputes_order_flow.sql
+--   2. supabase/migrations/000008_storage_push_images.sql
+--
+-- If you already ran 000001–000006, paste each file above and click Run.

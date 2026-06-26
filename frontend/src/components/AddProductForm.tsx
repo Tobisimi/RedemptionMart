@@ -11,8 +11,23 @@ export default function AddProductForm({ sellerId, onAdded }: Props) {
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  async function uploadImage(file: File): Promise<string> {
+    const ext = file.name.split(".").pop() ?? "jpg";
+    const path = `${sellerId}/${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("product-images")
+      .upload(path, file, { upsert: false, contentType: file.type });
+
+    if (uploadError) throw new Error(uploadError.message);
+
+    const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+    return data.publicUrl;
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -26,26 +41,49 @@ export default function AddProductForm({ sellerId, onAdded }: Props) {
 
     setSubmitting(true);
 
-    const { error: insertError } = await supabase.from("products").insert({
-      seller_id: sellerId,
-      name: name.trim(),
-      description: description.trim() || null,
-      price: parsedPrice,
-      image_url: imageUrl.trim() || null,
-    });
+    try {
+      let primaryImage = imageUrl.trim() || null;
+      const imageList: string[] = [];
 
-    setSubmitting(false);
+      if (imageFile) {
+        const uploaded = await uploadImage(imageFile);
+        imageList.push(uploaded);
+        if (!primaryImage) primaryImage = uploaded;
+      }
 
-    if (insertError) {
-      setError(insertError.message);
-      return;
+      if (primaryImage && !imageList.includes(primaryImage)) {
+        imageList.unshift(primaryImage);
+      }
+
+      const { error: insertError } = await supabase.from("products").insert({
+        seller_id: sellerId,
+        name: name.trim(),
+        description: description.trim() || null,
+        price: parsedPrice,
+        image_url: primaryImage,
+        images: imageList,
+      });
+
+      if (insertError) {
+        setError(insertError.message);
+        return;
+      }
+
+      setName("");
+      setDescription("");
+      setPrice("");
+      setImageUrl("");
+      setImageFile(null);
+      onAdded();
+    } catch (uploadOrInsertError) {
+      setError(
+        uploadOrInsertError instanceof Error
+          ? uploadOrInsertError.message
+          : "Could not add product."
+      );
+    } finally {
+      setSubmitting(false);
     }
-
-    setName("");
-    setDescription("");
-    setPrice("");
-    setImageUrl("");
-    onAdded();
   }
 
   return (
@@ -84,7 +122,16 @@ export default function AddProductForm({ sellerId, onAdded }: Props) {
         </label>
 
         <label>
-          Image URL (optional)
+          Photo (upload)
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
+
+        <label>
+          Or image URL
           <input
             type="url"
             value={imageUrl}
