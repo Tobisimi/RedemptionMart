@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { verifyOrderPayment } from "../lib/api";
+import {
+  clearPendingPayment,
+  readPendingPayment,
+  verifyPaystackReturn,
+} from "../lib/paystackCheckout";
 import PaymentReceipt from "./PaymentReceipt";
 
 type Props = {
@@ -16,11 +20,14 @@ export default function PaymentReturn({ reference, onDone }: Props) {
     let active = true;
 
     async function verify() {
+      const pending = readPendingPayment();
+
       try {
-        const result = await verifyOrderPayment(reference);
+        const result = await verifyPaystackReturn(reference, pending?.orderId);
         if (!active) return;
         setOrderId(result.orderId);
         setStatus("success");
+        clearPendingPayment();
       } catch (err) {
         if (!active) return;
         setStatus("error");
@@ -38,23 +45,39 @@ export default function PaymentReturn({ reference, onDone }: Props) {
     return (
       <section className="card receipt-loading">
         <div className="spinner" aria-hidden />
-        <h2>Verifying payment…</h2>
-        <p className="muted">Confirming with Paystack</p>
+        <h2>Confirming your payment…</h2>
+        <p className="muted">Talking to Paystack — this usually takes a few seconds.</p>
       </section>
     );
   }
 
   if (status === "error") {
     return (
-      <section className="card">
-        <h2>Payment issue</h2>
+      <section className="card payment-error-card">
+        <div className="error-icon" aria-hidden>
+          !
+        </div>
+        <h2>We could not confirm payment</h2>
         <p className="feedback error">{error}</p>
-        <button type="button" className="btn secondary" onClick={onDone}>
-          Back to orders
+        <p className="muted small">
+          If money left your account, open <strong>Orders</strong> and tap <strong>Pay now</strong>{" "}
+          again — we will not charge twice if it already went through.
+        </p>
+        <button type="button" className="btn primary" onClick={onDone}>
+          Go to orders
         </button>
       </section>
     );
   }
 
-  return <PaymentReceipt reference={reference} orderId={orderId} onDone={onDone} />;
+  return (
+    <PaymentReceipt
+      reference={reference}
+      orderId={orderId}
+      onDone={() => {
+        clearPendingPayment();
+        onDone();
+      }}
+    />
+  );
 }

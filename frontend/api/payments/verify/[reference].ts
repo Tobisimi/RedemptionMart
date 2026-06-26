@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { requireUser } from "../../lib/auth.js";
 import { serverEnv } from "../../lib/env.js";
 import { markOrderPaid } from "../../lib/markOrderPaid.js";
+import { verifyPayment } from "../../lib/paystack.js";
 import { supabaseAdmin } from "../../lib/supabase.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -21,20 +22,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "reference is required" });
     }
 
-    const { data: transaction, error: txError } = await supabaseAdmin
+    const orderIdParam =
+      typeof req.query.orderId === "string" ? req.query.orderId : undefined;
+
+    let orderId = orderIdParam;
+
+    const { data: byReference } = await supabaseAdmin
       .from("transactions")
       .select("order_id, paystack_reference")
       .eq("paystack_reference", reference)
       .maybeSingle();
 
-    if (txError || !transaction) {
+    if (byReference) {
+      orderId = byReference.order_id;
+    }
+
+    if (!orderId) {
+      const paystackCheck = await verifyPayment(reference);
+      const metaOrderId = paystackCheck.data?.metadata?.order_id;
+      if (typeof metaOrderId === "string") {
+        orderId = metaOrderId;
+      }
+    }
+
+    if (!orderId && orderIdParam) {
+      orderId = orderIdParam;
+    }
+
+    if (!orderId) {
       return res.status(404).json({ error: "Payment reference not found" });
     }
 
     const { data: order, error: orderError } = await supabaseAdmin
       .from("orders")
-      .select("buyer_id, payment_status")
-      .eq("id", transaction.order_id)
+      .select("id, buyer_id, payment_status")
+      .eq("id", orderId)
       .maybeSingle();
 
     if (orderError || !order) {
@@ -48,16 +70,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (order.payment_status === "paid") {
       return res.status(200).json({
         status: "success",
-        orderId: transaction.order_id,
+        orderId: order.id,
         alreadyPaid: true,
       });
     }
 
-    const result = await markOrderPaid(
-      transaction.order_id,
-      reference,
-      new Date().toISOString()
-    );
+    const { data: existingTx } = await supabaseAdmin
+      .from("transactions")
+      .select("id")
+      .eq("order_id", orderId)
+      .maybeSingle();
+
+    if (!existingTx) {
+      return res.status(404).json({
+        error: "Payment record missing — run database migration 000006_transactions.sql",
+      });
+    }
+
+    await supabaseAdmin
+      .from("transactions")
+      .update({ paystack_reference: reference })
+      .eq("order_id", orderId);
+
+    const result = await markOrderPaid(orderId, reference, new Date().toISOString());
 
     return res.status(200).json({ status: "success", orderId: result.orderId });
   } catch (error) {

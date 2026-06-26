@@ -48,7 +48,7 @@ paymentsRouter.post("/initialize", requireAuth, async (req, res) => {
     }
 
     const reference = buildPaymentReference(order.id);
-    const callbackUrl = `${env.frontendUrl}/?payment=return&orderId=${order.id}`;
+    const callbackUrl = `${env.frontendUrl}/`;
 
     const paystack = await initializePayment({
       email: user.email ?? "buyer@redemptionmart.local",

@@ -19,6 +19,7 @@ type PaystackVerifyResponse = {
     reference: string;
     amount: number;
     paid_at: string | null;
+    metadata?: { order_id?: string };
   };
 };
 

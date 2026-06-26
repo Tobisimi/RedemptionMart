@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase, type Order, type OrderItem } from "../lib/supabase";
-import { cancelPaidPendingOrder, triggerSellerPayout } from "../lib/api";
+import { cancelPaidPendingOrder, syncOrderPayment, triggerSellerPayout } from "../lib/api";
 import { formatNaira } from "../lib/format";
 import { useAuth } from "../contexts/AuthContext";
 import SellerOrdersPanel from "./SellerOrdersPanel";
@@ -40,6 +40,7 @@ export default function OrdersView() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [payingOrderId, setPayingOrderId] = useState<string | null>(null);
   const [confirmingOrderId, setConfirmingOrderId] = useState<string | null>(null);
+  const [syncingOrderId, setSyncingOrderId] = useState<string | null>(null);
   const [reportingOrderId, setReportingOrderId] = useState<string | null>(null);
 
   const loadBuyerOrders = useCallback(async () => {
@@ -114,13 +115,29 @@ export default function OrdersView() {
     }
   }
 
+  async function checkPayment(orderId: string) {
+    setActionError(null);
+    setSyncingOrderId(orderId);
+    try {
+      await syncOrderPayment(orderId);
+      await loadBuyerOrders();
+    } catch (syncError) {
+      setActionError(syncError instanceof Error ? syncError.message : "Payment not confirmed yet");
+    } finally {
+      setSyncingOrderId(null);
+    }
+  }
+
   async function payForOrder(orderId: string) {
     setActionError(null);
     setPayingOrderId(orderId);
     try {
       const { openPaystackCheckout } = await import("../lib/paystackCheckout");
-      await openPaystackCheckout(orderId);
+      const result = await openPaystackCheckout(orderId);
       await loadBuyerOrders();
+      if (result) {
+        setActionError(null);
+      }
     } catch (payError) {
       setActionError(payError instanceof Error ? payError.message : "Payment failed");
     } finally {
@@ -200,14 +217,24 @@ export default function OrdersView() {
 
                 <div className="row-actions wrap">
                   {order.payment_status === "unpaid" && order.status === "pending" && (
-                    <button
-                      type="button"
-                      className="btn primary small"
-                      disabled={payingOrderId === order.id}
-                      onClick={() => payForOrder(order.id)}
-                    >
-                      {payingOrderId === order.id ? "Opening Paystack…" : "Pay now"}
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="btn primary small"
+                        disabled={payingOrderId === order.id}
+                        onClick={() => payForOrder(order.id)}
+                      >
+                        {payingOrderId === order.id ? "Opening card form…" : "Pay with card"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn secondary small"
+                        disabled={syncingOrderId === order.id}
+                        onClick={() => checkPayment(order.id)}
+                      >
+                        {syncingOrderId === order.id ? "Checking…" : "I paid — check status"}
+                      </button>
+                    </>
                   )}
 
                   {order.status === "pending" && order.payment_status === "unpaid" && (

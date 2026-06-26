@@ -201,24 +201,11 @@ export function SellerDashboard() {
   }
 
   return (
-    <section className="stack">
-      {user && (
-        <section className="card seller-orders-banner">
-          <SellerOrdersPanel userId={user.id} title="Incoming orders — confirm here" />
-        </section>
-      )}
-
-      <section className="card">
-        <h2>{sellerProfile.shop_name}</h2>
-        {sellerProfile.description && <p className="muted">{sellerProfile.description}</p>}
-        <p className="muted">{sellerProfile.address}</p>
-      </section>
-
-      <AddProductForm sellerId={sellerProfile.id} onAdded={loadSellerData} />
-
+    <section className="stack seller-dashboard">
       <BankDetailsForm
         sellerId={sellerProfile.id}
         shopName={sellerProfile.shop_name}
+        prominent
         initial={{
           bank_account_name: sellerProfile.bank_account_name,
           bank_account_number: sellerProfile.bank_account_number,
@@ -226,6 +213,21 @@ export function SellerDashboard() {
         }}
         onSaved={loadSellerData}
       />
+
+      {user && (
+        <section className="card seller-orders-banner orders-priority">
+          <SellerOrdersPanel userId={user.id} title="📦 Incoming orders" />
+        </section>
+      )}
+
+      <section className="card shop-info-card">
+        <p className="eyebrow">Your shop</p>
+        <h2>{sellerProfile.shop_name}</h2>
+        {sellerProfile.description && <p className="muted">{sellerProfile.description}</p>}
+        <p className="muted">📍 {sellerProfile.address}</p>
+      </section>
+
+      <AddProductForm sellerId={sellerProfile.id} onAdded={loadSellerData} />
 
       <section className="card">
         <h3>Your products ({myProducts.length})</h3>

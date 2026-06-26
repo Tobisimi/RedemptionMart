@@ -30,52 +30,93 @@ export default function SellerOrdersPanel({
   title = "Incoming orders",
   compact = false,
 }: Props) {
+  const [shopId, setShopId] = useState<string | null>(null);
   const [orders, setOrders] = useState<SellerOrderRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const loadOrders = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const loadOrders = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      else setRefreshing(true);
+      setError(null);
 
-    const { data: shop, error: shopError } = await supabase
-      .from("seller_profiles")
-      .select("id")
-      .eq("user_id", userId)
-      .maybeSingle();
+      const { data: shop, error: shopError } = await supabase
+        .from("seller_profiles")
+        .select("id")
+        .eq("user_id", userId)
+        .maybeSingle();
 
-    if (shopError) {
-      setError(shopError.message);
+      if (shopError) {
+        setError(shopError.message);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      if (!shop) {
+        setShopId(null);
+        setOrders([]);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      setShopId(shop.id);
+
+      const { data, error: ordersError } = await supabase
+        .from("orders")
+        .select("*, order_items(*), profiles(display_name)")
+        .eq("seller_id", shop.id)
+        .order("created_at", { ascending: false });
+
       setLoading(false);
-      return;
-    }
+      setRefreshing(false);
 
-    if (!shop) {
-      setOrders([]);
-      setLoading(false);
-      return;
-    }
+      if (ordersError) {
+        setError(ordersError.message);
+        return;
+      }
 
-    const { data, error: ordersError } = await supabase
-      .from("orders")
-      .select("*, order_items(*), profiles(display_name)")
-      .eq("seller_id", shop.id)
-      .order("created_at", { ascending: false });
-
-    setLoading(false);
-
-    if (ordersError) {
-      setError(ordersError.message);
-      return;
-    }
-
-    setOrders((data as SellerOrderRow[]) ?? []);
-  }, [userId]);
+      setOrders((data as SellerOrderRow[]) ?? []);
+    },
+    [userId]
+  );
 
   useEffect(() => {
     loadOrders();
   }, [loadOrders]);
+
+  useEffect(() => {
+    if (!shopId) return undefined;
+
+    const interval = window.setInterval(() => {
+      loadOrders(true);
+    }, 8000);
+
+    const channel = supabase
+      .channel(`seller-orders-${shopId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          filter: `seller_id=eq.${shopId}`,
+        },
+        () => {
+          loadOrders(true);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      window.clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
+  }, [shopId, loadOrders]);
 
   async function updateStatus(orderId: string, status: Order["status"]) {
     setActionError(null);
@@ -89,14 +130,14 @@ export default function SellerOrdersPanel({
       return;
     }
 
-    await loadOrders();
+    await loadOrders(true);
   }
 
   async function cancelPaidPending(orderId: string) {
     setActionError(null);
     try {
       await cancelPaidPendingOrder(orderId);
-      await loadOrders();
+      await loadOrders(true);
     } catch (cancelError) {
       setActionError(cancelError instanceof Error ? cancelError.message : "Cancel failed");
     }
@@ -109,23 +150,36 @@ export default function SellerOrdersPanel({
   if (loading) return <p className="muted">Loading shop orders…</p>;
 
   return (
-    <section className={compact ? "" : "card"}>
+    <section className={compact ? "" : "seller-orders-panel"}>
       <div className="section-heading">
         <h2>{title}</h2>
-        {pendingCount > 0 && (
-          <span className="badge pending">{pendingCount} need action</span>
-        )}
+        <div className="row-actions">
+          {pendingCount > 0 && (
+            <span className="badge pending pulse">{pendingCount} need action</span>
+          )}
+          <button
+            type="button"
+            className="btn ghost small"
+            disabled={refreshing}
+            onClick={() => loadOrders(true)}
+          >
+            {refreshing ? "Refreshing…" : "↻ Refresh"}
+          </button>
+        </div>
       </div>
 
       {actionError && <p className="feedback error">{actionError}</p>}
       {error && <p className="feedback error">{error}</p>}
 
       {orders.length === 0 ? (
-        <p className="muted">No orders for your shop yet.</p>
+        <p className="muted">No orders yet. When someone buys, it will show up here.</p>
       ) : (
         <ul className="order-list">
           {orders.map((order) => (
-            <li key={order.id} className="order-card highlight">
+            <li
+              key={order.id}
+              className={`order-card highlight ${order.payment_status === "paid" ? "order-paid" : ""}`}
+            >
               <div className="order-header">
                 <div>
                   <strong>Order from {order.profiles?.display_name ?? "Buyer"}</strong>
@@ -136,9 +190,9 @@ export default function SellerOrdersPanel({
                 <div className="order-meta-col">
                   <span className="badge pending">{STATUS_LABELS[order.status]}</span>
                   <span
-                    className={`badge ${order.payment_status === "paid" ? "active" : "pending"}`}
+                    className={`badge payment-badge ${order.payment_status === "paid" ? "active" : "awaiting"}`}
                   >
-                    {order.payment_status === "paid" ? "Paid" : "Awaiting payment"}
+                    {order.payment_status === "paid" ? "✓ Paid" : "⏳ Awaiting payment"}
                   </span>
                 </div>
               </div>
@@ -179,7 +233,9 @@ export default function SellerOrdersPanel({
               )}
 
               {order.status === "pending" && order.payment_status === "unpaid" && (
-                <p className="muted small">Waiting for buyer to complete Paystack payment.</p>
+                <p className="muted small waiting-payment">
+                  Waiting for buyer to pay on Paystack. This page refreshes automatically.
+                </p>
               )}
 
               {order.status === "confirmed" && (

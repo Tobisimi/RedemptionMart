@@ -44,9 +44,9 @@ export async function initializeOrderPayment(orderId: string) {
   });
 }
 
-export async function verifyOrderPayment(reference: string) {
+export async function verifyOrderPayment(reference: string, extraQuery = "") {
   return apiFetch<{ status: string; orderId: string; alreadyPaid?: boolean }>(
-    `/api/payments/verify/${encodeURIComponent(reference)}`
+    `/api/payments/verify/${encodeURIComponent(reference)}${extraQuery}`
   );
 }
 
@@ -79,6 +79,16 @@ export async function notifySellerOrderPlaced(orderId: string) {
     method: "POST",
     body: JSON.stringify({ orderId }),
   });
+}
+
+export async function syncOrderPayment(orderId: string) {
+  return apiFetch<{ status: string; orderId: string; alreadyPaid?: boolean }>(
+    "/api/payments/sync-order",
+    {
+      method: "POST",
+      body: JSON.stringify({ orderId }),
+    }
+  );
 }
 
 export async function resolveDispute(params: {

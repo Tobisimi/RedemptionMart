@@ -11,10 +11,9 @@ export default function App() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const reference = params.get("reference");
-    const payment = params.get("payment");
+    const reference = params.get("reference") || params.get("trxref");
 
-    if (reference && payment === "return") {
+    if (reference) {
       setPaymentReference(reference);
       window.history.replaceState({}, "", window.location.pathname);
     }

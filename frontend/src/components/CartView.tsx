@@ -56,15 +56,19 @@ export default function CartView({ onOrderPlaced }: Props) {
     try {
       await notifySellerOrderPlaced(orderId);
     } catch {
-      /* push notify is best-effort */
+      /* optional */
     }
 
     const orderTotal = subtotal;
+    clearCart();
 
     try {
-      clearCart();
       const result = await openPaystackCheckout(orderId);
-      setReceipt({ reference: result.reference, orderId: result.orderId, amount: orderTotal });
+      setReceipt({
+        reference: result.reference,
+        orderId: result.orderId,
+        amount: result.amount ?? orderTotal,
+      });
     } catch (paymentError) {
       setError(
         paymentError instanceof Error
@@ -143,9 +147,9 @@ export default function CartView({ onOrderPlaced }: Props) {
         </div>
       </section>
 
-      <section className="card">
+      <section className="card pay-card">
         <form className="form" onSubmit={handlePlaceOrder}>
-          <h3 className="form-title">Delivery options</h3>
+          <h3 className="form-title">How do you want it?</h3>
 
           <div className="option-cards">
             <label className={`option-card ${fulfillment === "pickup" ? "selected" : ""}`}>
@@ -172,7 +176,7 @@ export default function CartView({ onOrderPlaced }: Props) {
               />
               <div>
                 <strong>Delivery</strong>
-                <p className="muted small">We deliver to your address</p>
+                <p className="muted small">Seller delivers to your address</p>
               </div>
             </label>
           </div>
@@ -190,21 +194,41 @@ export default function CartView({ onOrderPlaced }: Props) {
             </label>
           )}
 
+          <div className="paystack-preview card-inset">
+            <div className="paystack-preview-icon" aria-hidden>
+              💳
+            </div>
+            <div>
+              <strong>Paystack secure card form</strong>
+              <p className="muted small">
+                When you tap the button below, a <strong>Paystack window</strong> opens on top of
+                this page. Enter your <strong>card number</strong>, <strong>expiry date</strong>,
+                and <strong>CVV</strong> there — just like paying on Jumia or Netflix.
+              </p>
+            </div>
+          </div>
+
           <div className="escrow-notice">
-            <strong>Buyer protection</strong>
+            <strong>🛡️ Your money is protected</strong>
             <p className="muted small">
-              Payment is processed by Paystack and held until you inspect your order and tap
-              &ldquo;Confirm received.&rdquo; The seller is paid only after that.
+              We hold payment until you tap &ldquo;Confirm received.&rdquo; The seller only gets paid
+              after you&apos;re happy.
             </p>
           </div>
+
+          <p className="muted small test-card-hint">
+            <strong>Test mode:</strong> card <span className="mono">4084084084084081</span> · CVV{" "}
+            <span className="mono">408</span> · expiry any future date · OTP{" "}
+            <span className="mono">123456</span>
+          </p>
 
           {error && <p className="feedback error">{error}</p>}
 
           <button type="submit" className="btn primary full pay-btn" disabled={submitting}>
-            {submitting ? "Opening Paystack…" : `Pay ${formatNaira(subtotal)} securely`}
+            {submitting ? "Opening card form…" : `Pay ${formatNaira(subtotal)} with card`}
           </button>
 
-          <p className="paystack-badge">Secured by Paystack</p>
+          <p className="paystack-badge">🔒 Secured by Paystack</p>
         </form>
       </section>
     </section>

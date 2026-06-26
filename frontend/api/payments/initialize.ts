@@ -40,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const reference = buildPaymentReference(order.id);
-    const callbackUrl = `${serverEnv.frontendUrl(req)}/?payment=return&orderId=${order.id}`;
+    const callbackUrl = `${serverEnv.frontendUrl(req)}/`;
 
     const paystack = await initializePayment({
       email: user.email ?? "buyer@redemptionmart.local",

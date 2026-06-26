@@ -25,7 +25,11 @@ export async function markOrderPaid(orderId: string, reference: string, paidAt: 
   }
 
   if (verified.data.amount !== nairaToKobo(Number(order.total))) {
-    throw new Error("Paid amount does not match order total");
+    const expected = nairaToKobo(Number(order.total));
+    const diff = Math.abs(verified.data.amount - expected);
+    if (diff > 1) {
+      throw new Error("Paid amount does not match order total");
+    }
   }
 
   const { error: orderUpdateError } = await supabaseAdmin
