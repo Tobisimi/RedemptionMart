@@ -1,0 +1,20 @@
+{
+  "name": "redemptionmart",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspaces --if-present",
+    "db:migrate": "npx supabase db push",
+    "db:reset": "npx supabase db reset",
+    "db:types": "npx supabase gen types typescript --local > shared/types/database.types.ts"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
