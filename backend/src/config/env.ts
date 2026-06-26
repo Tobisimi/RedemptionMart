@@ -19,4 +19,6 @@ export const env = {
   port: parseInt(process.env.PORT ?? "3001", 10),
   supabaseUrl: requireEnv("SUPABASE_URL"),
   supabaseServiceRoleKey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  paystackSecretKey: process.env.PAYSTACK_SECRET_KEY ?? "",
+  frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:5173",
 } as const;

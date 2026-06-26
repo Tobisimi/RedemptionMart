@@ -245,6 +245,50 @@ export type Database = {
           },
         ];
       };
+      transactions: {
+        Row: {
+          id: string;
+          order_id: string;
+          amount: number;
+          paystack_reference: string;
+          commission_amount: number | null;
+          payout_status: Database["public"]["Enums"]["payout_status"];
+          paid_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          order_id: string;
+          amount: number;
+          paystack_reference: string;
+          commission_amount?: number | null;
+          payout_status?: Database["public"]["Enums"]["payout_status"];
+          paid_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          order_id?: string;
+          amount?: number;
+          paystack_reference?: string;
+          commission_amount?: number | null;
+          payout_status?: Database["public"]["Enums"]["payout_status"];
+          paid_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "transactions_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: true;
+            referencedRelation: "orders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -263,6 +307,10 @@ export type Database = {
         Args: Record<string, never>;
         Returns: undefined;
       };
+      confirm_order_received: {
+        Args: { p_order_id: string };
+        Returns: undefined;
+      };
     };
     Enums: {
       product_status: "active" | "sold_out";
@@ -277,6 +325,7 @@ export type Database = {
         | "disputed";
       fulfillment_type: "delivery" | "pickup";
       payment_status: "unpaid" | "paid";
+      payout_status: "pending" | "processing" | "paid" | "failed";
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -297,6 +346,8 @@ export type Product = Database["public"]["Tables"]["products"]["Row"];
 export type Order = Database["public"]["Tables"]["orders"]["Row"];
 
 export type OrderItem = Database["public"]["Tables"]["order_items"]["Row"];
+
+export type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 
 export type ProfileInsert = Database["public"]["Tables"]["profiles"]["Insert"];
 export type SellerProfileInsert = Database["public"]["Tables"]["seller_profiles"]["Insert"];

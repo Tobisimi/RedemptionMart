@@ -91,7 +91,9 @@ export default function SellerOrdersPanel({
     await loadOrders();
   }
 
-  const pendingCount = orders.filter((o) => o.status === "pending").length;
+  const pendingCount = orders.filter(
+    (o) => o.status === "pending" && o.payment_status === "paid"
+  ).length;
 
   if (loading) return <p className="muted">Loading shop orders…</p>;
 
@@ -120,7 +122,14 @@ export default function SellerOrdersPanel({
                     {new Date(order.created_at).toLocaleString()} · {order.fulfillment_type}
                   </p>
                 </div>
-                <span className="badge pending">{STATUS_LABELS[order.status]}</span>
+                <div className="order-meta-col">
+                  <span className="badge pending">{STATUS_LABELS[order.status]}</span>
+                  <span
+                    className={`badge ${order.payment_status === "paid" ? "active" : "pending"}`}
+                  >
+                    {order.payment_status === "paid" ? "Paid" : "Awaiting payment"}
+                  </span>
+                </div>
               </div>
 
               <p className="muted">
@@ -139,7 +148,7 @@ export default function SellerOrdersPanel({
 
               <p className="price">Total: {formatNaira(Number(order.total))}</p>
 
-              {order.status === "pending" && (
+              {order.status === "pending" && order.payment_status === "paid" && (
                 <button
                   type="button"
                   className="btn primary"
@@ -147,6 +156,10 @@ export default function SellerOrdersPanel({
                 >
                   ✓ Confirm this order
                 </button>
+              )}
+
+              {order.status === "pending" && order.payment_status === "unpaid" && (
+                <p className="muted small">Waiting for buyer to complete Paystack payment.</p>
               )}
 
               {order.status === "confirmed" && (

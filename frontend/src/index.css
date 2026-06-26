@@ -463,3 +463,10 @@ textarea {
   border-radius: 8px;
   padding: 0.75rem;
 }
+
+.order-meta-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase, type Order, type OrderItem } from "../lib/supabase";
 import { formatNaira } from "../lib/format";
+import { initializeOrderPayment } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import SellerOrdersPanel from "./SellerOrdersPanel";
 
@@ -34,6 +35,7 @@ export default function OrdersView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [payingOrderId, setPayingOrderId] = useState<string | null>(null);
 
   const loadBuyerOrders = useCallback(async () => {
     if (!user) return;
@@ -84,6 +86,32 @@ export default function OrdersView() {
     await loadBuyerOrders();
   }
 
+  async function payForOrder(orderId: string) {
+    setActionError(null);
+    setPayingOrderId(orderId);
+    try {
+      const payment = await initializeOrderPayment(orderId);
+      window.location.href = payment.authorizationUrl;
+    } catch (payError) {
+      setPayingOrderId(null);
+      setActionError(payError instanceof Error ? payError.message : "Payment failed to start");
+    }
+  }
+
+  async function confirmReceived(orderId: string) {
+    setActionError(null);
+    const { error: confirmError } = await supabase.rpc("confirm_order_received", {
+      p_order_id: orderId,
+    });
+
+    if (confirmError) {
+      setActionError(confirmError.message);
+      return;
+    }
+
+    await loadBuyerOrders();
+  }
+
   if (loading) return <p className="muted">Loading orders…</p>;
   if (error) return <p className="feedback error">{error}</p>;
 
@@ -110,15 +138,40 @@ export default function OrdersView() {
                   order={order}
                 />
                 <OrderItems items={order.order_items} />
-                {order.status === "pending" && (
-                  <button
-                    type="button"
-                    className="btn secondary small"
-                    onClick={() => cancelOrder(order.id)}
-                  >
-                    Cancel order
-                  </button>
-                )}
+
+                <div className="row-actions wrap">
+                  {order.payment_status === "unpaid" && order.status === "pending" && (
+                    <button
+                      type="button"
+                      className="btn primary small"
+                      disabled={payingOrderId === order.id}
+                      onClick={() => payForOrder(order.id)}
+                    >
+                      {payingOrderId === order.id ? "Opening Paystack…" : "Pay now"}
+                    </button>
+                  )}
+
+                  {order.status === "pending" && order.payment_status === "unpaid" && (
+                    <button
+                      type="button"
+                      className="btn secondary small"
+                      onClick={() => cancelOrder(order.id)}
+                    >
+                      Cancel order
+                    </button>
+                  )}
+
+                  {order.payment_status === "paid" &&
+                    (order.status === "shipped" || order.status === "ready_for_pickup") && (
+                      <button
+                        type="button"
+                        className="btn primary small"
+                        onClick={() => confirmReceived(order.id)}
+                      >
+                        Confirm received
+                      </button>
+                    )}
+                </div>
               </li>
             ))}
           </ul>
@@ -146,6 +199,9 @@ function OrderHeader({ title, order }: { title: string; order: OrderRow }) {
       <div className="order-meta">
         <span className={`badge ${statusClass(order.status)}`}>
           {STATUS_LABELS[order.status]}
+        </span>
+        <span className={`badge ${order.payment_status === "paid" ? "active" : "pending"}`}>
+          {order.payment_status === "paid" ? "Paid" : "Unpaid"}
         </span>
         <span className="price">{formatNaira(Number(order.total))}</span>
       </div>

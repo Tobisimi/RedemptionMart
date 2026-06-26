@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { initializeOrderPayment } from "../lib/api";
 import { formatNaira } from "../lib/format";
 import { useCart } from "../contexts/CartContext";
 
@@ -14,7 +15,6 @@ export default function CartView({ onOrderPlaced }: Props) {
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState<string | null>(null);
 
   async function handlePlaceOrder(event: FormEvent) {
     event.preventDefault();
@@ -40,36 +40,41 @@ export default function CartView({ onOrderPlaced }: Props) {
       p_items: payload,
     });
 
-    setSubmitting(false);
-
     if (placeError) {
+      setSubmitting(false);
       const hint = placeError.message.includes("place_order")
-        ? " Orders database setup is missing. Run supabase/run_orders_setup.sql in Supabase SQL Editor."
+        ? " Run supabase/run_orders_setup.sql in Supabase SQL Editor."
         : "";
       setError(placeError.message + hint);
       return;
     }
 
-    clearCart();
-    setSuccess(`Order placed successfully. Reference: ${orderId?.slice(0, 8)}…`);
-    onOrderPlaced();
+    if (!orderId) {
+      setSubmitting(false);
+      setError("Order was not created.");
+      return;
+    }
+
+    try {
+      clearCart();
+      const payment = await initializeOrderPayment(orderId);
+      window.location.href = payment.authorizationUrl;
+    } catch (paymentError) {
+      setSubmitting(false);
+      setError(
+        paymentError instanceof Error
+          ? `${paymentError.message} Your order was created but payment did not start — check Orders to retry.`
+          : "Payment could not start."
+      );
+      onOrderPlaced();
+    }
   }
 
-  if (items.length === 0 && !success) {
+  if (items.length === 0) {
     return (
       <section className="card">
         <h2>Your cart</h2>
         <p className="muted">Your cart is empty. Browse products and add something.</p>
-      </section>
-    );
-  }
-
-  if (success) {
-    return (
-      <section className="card">
-        <h2>Order placed</h2>
-        <p className="feedback success">{success}</p>
-        <p className="muted">Payment via Paystack is coming next. The seller will see your order.</p>
       </section>
     );
   }
@@ -117,7 +122,7 @@ export default function CartView({ onOrderPlaced }: Props) {
       </section>
 
       <section className="card">
-        <h3>Checkout</h3>
+        <h3>Checkout & pay</h3>
         <form className="form" onSubmit={handlePlaceOrder}>
           <fieldset className="fulfillment-options">
             <legend>How do you want it?</legend>
@@ -159,9 +164,11 @@ export default function CartView({ onOrderPlaced }: Props) {
           {error && <p className="feedback error">{error}</p>}
 
           <button type="submit" className="btn primary" disabled={submitting}>
-            {submitting ? "Placing order…" : "Place order"}
+            {submitting ? "Processing…" : `Pay ${formatNaira(subtotal)} with Paystack`}
           </button>
-          <p className="muted small">Payment step comes next — order is saved as unpaid for now.</p>
+          <p className="muted small">
+            Spec: full payment is collected now and held until you confirm receipt.
+          </p>
         </form>
       </section>
     </section>

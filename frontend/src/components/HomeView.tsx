@@ -8,10 +8,14 @@ import OrdersView from "./OrdersView";
 
 type Tab = "browse" | "cart" | "orders" | "sell";
 
-export default function HomeView() {
+type Props = {
+  startOnOrders?: boolean;
+};
+
+export default function HomeView({ startOnOrders = false }: Props) {
   const { profile, signOut } = useAuth();
   const { itemCount } = useCart();
-  const [tab, setTab] = useState<Tab>("browse");
+  const [tab, setTab] = useState<Tab>(startOnOrders ? "orders" : "browse");
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
 
   function goToBrowse() {

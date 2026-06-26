@@ -107,15 +107,53 @@ CREATE POLICY "Users can update own profile"
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
--- Admins can read all profiles (for dispute handling later).
+-- Admins can read all profiles (uses helper to avoid RLS recursion).
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT COALESCE(
+    (SELECT p.is_admin FROM public.profiles p WHERE p.id = auth.uid()),
+    false
+  );
+$$;
+
 CREATE POLICY "Admins can view all profiles"
+  ON public.profiles
+  FOR SELECT
+  TO authenticated
+  USING (public.is_admin());
+
+-- Sellers can read buyer display names on orders for their shop.
+CREATE POLICY "Sellers can view buyer profiles on shop orders"
   ON public.profiles
   FOR SELECT
   TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND is_admin = true
+      SELECT 1
+      FROM public.orders o
+      JOIN public.seller_profiles sp ON sp.id = o.seller_id
+      WHERE o.buyer_id = profiles.id
+        AND sp.user_id = auth.uid()
+    )
+  );
+
+-- Buyers can read seller account profile on orders they placed.
+CREATE POLICY "Buyers can view seller profiles on their orders"
+  ON public.profiles
+  FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.orders o
+      JOIN public.seller_profiles sp ON sp.id = o.seller_id
+      WHERE sp.user_id = profiles.id
+        AND o.buyer_id = auth.uid()
     )
   );
 
