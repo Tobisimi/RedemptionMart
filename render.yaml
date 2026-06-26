@@ -1,0 +1,14 @@
+{
+  "services": [
+    {
+      "type": "web",
+      "name": "redemptionmart-api",
+      "runtime": "node",
+      "buildCommand": "npm install && npm run build --workspace=backend",
+      "startCommand": "npm run start --workspace=backend",
+      "envVars": [
+        { "key": "NODE_VERSION", "value": "20" }
+      ]
+    }
+  ]
+}

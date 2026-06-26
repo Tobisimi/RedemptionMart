@@ -20,5 +20,21 @@ export const env = {
   supabaseUrl: requireEnv("SUPABASE_URL"),
   supabaseServiceRoleKey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
   paystackSecretKey: process.env.PAYSTACK_SECRET_KEY ?? "",
-  frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:5173",
+  frontendUrl:
+    process.env.FRONTEND_URL ??
+    process.env.FRONTEND_URL_PRODUCTION ??
+    "http://localhost:5173",
 } as const;
+
+export function allowedOrigins(): string[] {
+  return [
+    ...new Set(
+      [
+        env.frontendUrl,
+        process.env.FRONTEND_URL_PRODUCTION,
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+      ].filter((value): value is string => Boolean(value))
+    ),
+  ];
+}
